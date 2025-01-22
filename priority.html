@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dustbin Priority List</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <script defer>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvTnByQhzYZS0TCx8cDCTrHpgj-rRTBZA",
+            authDomain: "evento-f60bc.firebaseapp.com",
+            databaseURL: "https://evento-f60bc-default-rtdb.firebaseio.com/",
+            projectId: "evento-f60bc",
+            storageBucket: "evento-f60bc.appspot.com",
+            messagingSenderId: "1234567890",
+            appId: "1:1234567890:web:abcdef123456"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref("/DustbinList");
+
+        // Load Google Charts
+        google.charts.load("current", { packages: ["gauge"] });
+
+        // Function to Draw Gauge
+        function drawGauge(elementId, value, maxValue, label) {
+            const data = google.visualization.arrayToDataTable([
+                ["Label", "Value"],
+                [label, value],
+            ]);
+
+            const options = {
+                width: 150,
+                height: 150,
+                redFrom: 90,
+                redTo: 100,
+                yellowFrom: 70,
+                yellowTo: 90,
+                greenFrom: 0,
+                greenTo: 70,
+                minorTicks: 5,
+                max: maxValue,
+            };
+
+            const chart = new google.visualization.Gauge(document.getElementById(elementId));
+            chart.draw(data, options);
+        }
+
+        // Function to Fetch and Populate Priority List with Gauges
+        function populatePriorityList() {
+    console.log("Fetching data from Firebase..."); // Debugging log
+
+    dbRef.on("value", (snapshot) => {
+        const data = snapshot.val();
+        console.log("Raw Data from Firebase:", data); // Debugging log
+
+        const container = document.getElementById("dustbins");
+        container.innerHTML = "";
+
+        if (data) {
+            const bins = Object.entries(data).map(([id, values]) => ({
+                id,
+                ...values
+            }));
+
+            // Graph Representation
+            console.log("Creating graph representation...");
+            const graph = createGraph(bins);
+            console.log("Graph:", graph);
+
+            // Calculate Priority Weights
+            bins.forEach(bin => {
+                bin.weight = calculatePriority(bin);
+            });
+
+            console.log("Bins with Priority Weights:", bins);
+
+            // Sort bins based on priority weight (descending order)
+            bins.sort((a, b) => b.weight - a.weight);
+
+            // Compute Optimized Route (Graph Traversal - Dijkstra)
+            console.log("Computing optimized route...");
+            const optimizedRoute = computeOptimizedRoute(graph, bins);
+            console.log("Optimized Route:", optimizedRoute);
+
+            // Display Priority Bins with Gauges
+            bins.forEach((bin, index) => {
+                const fillGaugeId = `fill-gauge-${index}`;
+                const gasGaugeId = `gas-gauge-${index}`;
+
+                container.innerHTML += `
+                    <div class="dustbin">
+                        <h2>${bin.id}</h2>
+                        <p>Priority Index: <span class="priority">${bin.weight}</span>/10</p>
+                        <div class="gauge-container">
+                            <div id="${fillGaugeId}" class="gauge"></div>
+                            <div id="${gasGaugeId}" class="gauge"></div>
+                        </div>
+                        <p>Hazardous: ${bin.IsHazardous ? "Yes" : "No"}</p>
+                        <p>Darkness Detected: ${bin.IsDark ? "Yes" : "No"}</p>
+                        <p>Optimized Route Position: ${optimizedRoute.indexOf(bin.id) + 1}</p>
+                    </div>
+                `;
+
+                google.charts.setOnLoadCallback(() => {
+                    const fillPercentage =
+                        bin.Distance && bin.DustbinMaxHeight
+                            ? ((bin.DustbinMaxHeight - bin.Distance) / bin.DustbinMaxHeight) * 100
+                            : 0;
+
+                    drawGauge(fillGaugeId, fillPercentage, 100, "Fill (%)");
+                    drawGauge(gasGaugeId, bin.GasConcentration || 0, 1000, "Gas");
+                });
+            });
+        } else {
+            container.innerHTML = "<p>No dustbins found in the database.</p>";
+            console.log("No data found in Firebase.");
+        }
+    });
+}
+
+// Function to Calculate Priority Weight
+// Function to Calculate Priority Weight (Updated)
+function calculatePriority(bin) {
+    let weight = 0;
+    const fillThreshold = 80;
+    const gasThreshold = 300;
+    const tempThreshold = 35;
+    const humidityThreshold = 70;
+
+    console.log(`Calculating priority for Bin: ${bin.id}`);
+
+    if (bin.Distance && bin.DustbinMaxHeight) {
+        const fillPercentage = ((bin.DustbinMaxHeight - bin.Distance) / bin.DustbinMaxHeight) * 100;
+        console.log(`Bin: ${bin.id}, Fill Level: ${fillPercentage}%, Fill Threshold: ${fillThreshold}%`);
+        if (fillPercentage >= fillThreshold) {
+            weight += 3;
+            console.log(`✔ Fill level exceeded threshold for ${bin.id}, Assigned Weight: ${weight}`);
+        }
+    }
+
+    if (bin.GasConcentration >= gasThreshold) {
+        weight += 2;
+        console.log(`✔ Gas concentration exceeded threshold for ${bin.id}, Assigned Weight: ${weight}`);
+    }
+
+    if (bin.Temperature >= tempThreshold || bin.Humidity >= humidityThreshold) {
+        weight += 1;
+        console.log(`✔ Temperature/Humidity exceeded threshold for ${bin.id}, Assigned Weight: ${weight}`);
+    }
+
+    console.log(`Final Weight for Bin ${bin.id}: ${weight}`);
+    return weight;
+}
+
+
+
+// Create Graph Representation of Bins
+// Create Graph Representation of All Bins (Distance Comparison Included)
+function createGraph(bins) {
+    const graph = {};
+    
+    bins.forEach(bin => {
+        graph[bin.id] = [];
+
+        bins.forEach(otherBin => {
+            if (bin.id !== otherBin.id) {
+                const distance = calculateDistance(bin.Location, otherBin.Location);
+                if (distance !== Infinity) { 
+                    graph[bin.id].push({ id: otherBin.id, distance });
+                } else {
+                    console.log(`⚠ Skipping connection: ${bin.id} → ${otherBin.id} (Invalid Location)`);
+                }
+            }
+        });
+
+        console.log(`✅ Graph Node ${bin.id}:`, graph[bin.id]);
+    });
+
+    console.log("🟢 Final Graph Representation:", graph);
+    return graph;
+}
+
+const startingLocation = { id: "WorkerStart", lat: 23.813154, lng: 90.424214 };
+
+
+function computeOptimizedRoute(graph, bins) {
+    console.log("🚀 Starting Nearest Neighbor Algorithm for Route Optimization...");
+
+    if (bins.length === 0) {
+        console.log("⚠ No bins available for route calculation.");
+        return [];
+    }
+
+    let visited = new Set();  // Track visited bins
+    let route = [];           // Store the optimized route
+
+    // Add the fixed starting location to the graph
+    graph[startingLocation.id] = bins.map(bin => ({
+        id: bin.id,
+        distance: calculateDistance(startingLocation, bin.Location),
+    }));
+
+    // Start from the fixed location
+    let currentBin = startingLocation.id;
+    visited.add(currentBin);
+    route.push(currentBin);
+    console.log(`🟢 Starting from Worker Location: ${startingLocation.lat}, ${startingLocation.lng}`);
+
+    while (visited.size <= bins.length) {
+        let nearestBin = null;
+        let minDistance = Infinity;
+
+        // Find the nearest unvisited bin
+        for (let neighbor of graph[currentBin] || []) {
+            if (!visited.has(neighbor.id) && neighbor.distance < minDistance) {
+                nearestBin = neighbor.id;
+                minDistance = neighbor.distance;
+            }
+        }
+
+        if (nearestBin) {
+            visited.add(nearestBin);
+            route.push(nearestBin);
+            console.log(`✅ Moving to ${nearestBin} (Distance: ${minDistance.toFixed(2)} km)`);
+            currentBin = nearestBin;
+        } else {
+            console.log(`⚠ No more reachable bins from ${currentBin}. Ending route.`);
+            break;
+        }
+    }
+
+    console.log("✅ Final Optimized Route Computed:", route);
+    return route;
+}
+
+
+
+// Calculate Distance Between Two Locations (Haversine Formula)
+// Calculate Distance Between Two Locations (Haversine Formula)
+function calculateDistance(loc1, loc2) {
+    if (!loc1 || !loc2 || !loc1.lat || !loc2.lat) {
+        console.log("⚠ Invalid locations for distance calculation:", loc1, loc2);
+        return Infinity;
+    }
+
+    const R = 6371; // Radius of Earth in km
+    const dLat = (loc2.lat - loc1.lat) * (Math.PI / 180);
+    const dLon = (loc2.lng - loc1.lng) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(loc1.lat * (Math.PI / 180)) *
+            Math.cos(loc2.lat * (Math.PI / 180)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+
+    console.log(`📏 Distance between ${loc1.lat}, ${loc1.lng} and ${loc2.lat}, ${loc2.lng}: ${distance.toFixed(2)} km`);
+    return distance;
+}
+
+
+
+
+
+
+        // Load Data on Page Load
+        document.addEventListener("DOMContentLoaded", () => {
+            populatePriorityList();
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+        }
+        h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+        nav {
+            margin-top: 10px;
+            text-align: center;
+        }
+        nav a {
+            text-decoration: none;
+            color: white;
+            margin: 0 15px;
+            font-size: 1rem;
+        }
+        main {
+            padding: 20px;
+        }
+        .dustbin {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        .dustbin h2 {
+            margin-bottom: 10px;
+        }
+        .dustbin p {
+            margin: 5px 0;
+        }
+        .gauge-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 10px 0;
+        }
+        .gauge {
+            width: 150px;
+            height: 150px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dustbin Priority List</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="all-dustbins.html">All Dustbins</a>
+            <a href="Route.html">Route</a>
+        </nav>
+    </header>
+    <main>
+        <div id="dustbins"></div>
+    </main>
+</body>
+</html>

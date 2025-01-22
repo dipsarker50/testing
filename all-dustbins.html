@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Dustbins</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAaZ3HvB_bMn7ksiADCtsiqPFAxKNbAQe4&libraries=places,marker"></script>
+    <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+
+
+    <script src="script.js" defer></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .dustbin {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .map-container {
+            width: 100%;
+            height: 400px;
+        }
+        .close {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* General Page Styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+header {
+    background-color: #007bff;
+    color: white;
+    padding: 15px 20px;
+    text-align: center;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+main {
+    padding: 20px;
+}
+
+/* Dustbin Card Styles */
+.dustbin {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.dustbin:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dustbin h2 {
+    font-size: 1.5rem;
+    margin: 0 0 10px;
+}
+
+.dustbin p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.map-btn {
+    display: inline-block;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+    text-align: center;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.map-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    position: relative;
+}
+
+.modal-content h3 {
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+}
+
+#place-input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+#map {
+    width: 100%;
+    height: 300px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#saveLocationBtn {
+    display: inline-block;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+#saveLocationBtn:hover {
+    background-color: #218838;
+}
+
+.close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 1.5rem;
+    color: #333;
+    cursor: pointer;
+    font-weight: bold;
+    transition: color 0.2s;
+}
+
+.close:hover {
+    color: #ff0000;
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+    .dustbin h2 {
+        font-size: 1.3rem;
+    }
+
+    #place-input {
+        font-size: 0.8rem;
+    }
+
+    #saveLocationBtn {
+        font-size: 0.9rem;
+        padding: 8px 15px;
+    }
+    .gauge-container {
+    display: inline-block;
+    margin: 10px;
+    text-align: center;
+}
+
+/* General Styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+header {
+    background-color: #007bff;
+    color: white;
+    padding: 15px 20px;
+    text-align: center;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+main {
+    padding: 20px;
+}
+
+/* Dustbin Card */
+.dustbin {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.dustbin h2 {
+    margin: 0 0 10px;
+    font-size: 1.5rem;
+}
+
+.dustbin p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.dustbin .details-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.dustbin .detail {
+    display: flex;
+    align-items: center;
+    margin: 5px 10px;
+    font-size: 0.9rem;
+}
+
+.dustbin .detail i {
+    font-size: 1.2rem;
+    color: #007bff;
+    margin-right: 8px;
+}
+
+/* Gauges */
+.gauge-container {
+    margin: 10px;
+}
+
+/* Buttons */
+.map-btn {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background-color 0.2s;
+}
+
+.map-btn:hover {
+    background-color: #0056b3;
+}
+.custom-map-control-button {
+    background-color: #fff;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    margin: 10px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+    cursor: pointer;
+    text-align: center;
+}
+
+.custom-map-control-button:hover {
+    background-color: #e6e6e6;
+}
+
+
+
+}
+
+    </style>
+</head>
+<body>
+    <header>
+        <h1>All Dustbin</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="priority.html">Priority</a>
+        </nav>
+    </header>
+    <main>
+        <div id="dustbins">
+            <!--  -->
+        </div>
+    </main>
+
+    <!-- Map Modal -->
+    <div id="mapModal" class="modal">
+        <div class="modal-content">
+            <span id="closeModal" class="close">&times;</span>
+            <h3>Select Location</h3>
+            <input id="place-input" type="text" placeholder="Enter a location" class="form-control">
+            <div id="map" class="map-container"></div>
+            <button id="saveLocationBtn" class="map-btn">Save Location</button>
+            <button id="currentLocationBtn" class="map-btn">📍 Use Current Location</button>
+
+        </div>
+    </div>
+    
+</body>
+</html>

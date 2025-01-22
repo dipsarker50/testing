@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dustbin Optimized Route</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBa3RU8j1dsVihv1EPm84rFeSziYghJbaE"></script>
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+            display: none; /* Initially hidden */
+        }
+        .btn-route {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dustbin Optimized Route</h1>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="all-dustbins.html">All Dustbins</a>
+        </nav>
+    </header>
+    <main>
+        <button class="btn-route" onclick="showOptimalRoute()">Show Optimal Route</button>
+        <div id="map"></div>
+        <div id="dustbins"></div>
+    </main>
+
+    <script>
+        // **Firebase Configuration**
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvTnByQhzYZS0TCx8cDCTrHpgj-rRTBZA",
+            authDomain: "evento-f60bc.firebaseapp.com",
+            databaseURL: "https://evento-f60bc-default-rtdb.firebaseio.com/",
+            projectId: "evento-f60bc",
+            storageBucket: "evento-f60bc.appspot.com",
+            messagingSenderId: "1234567890",
+            appId: "1:1234567890:web:abcdef123456"
+        };
+
+        // **Initialize Firebase**
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref("/DustbinList");
+
+        // **Fixed worker's starting location**
+        const startingLocation = { id: "WorkerStart", lat: 23.813154, lng: 90.424214 };
+
+        let map, directionsService, directionsRenderer;
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: startingLocation,
+                zoom: 14
+            });
+
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true });
+            directionsRenderer.setMap(map);
+        }
+
+        function showOptimalRoute() {
+            document.getElementById("map").style.display = "block";
+            fetchDustbinsAndDrawRoute();
+        }
+
+        function fetchDustbinsAndDrawRoute() {
+            dbRef.once("value", (snapshot) => {
+                const data = snapshot.val();
+                if (!data) {
+                    console.log("⚠ No dustbins found in the database.");
+                    return;
+                }
+
+                // Convert Firebase data to array
+                const bins = Object.entries(data)
+                    .map(([id, values]) => ({ id, ...values }))
+                    .filter(bin => bin.Location && bin.Location.lat !== undefined && bin.Location.lng !== undefined);
+
+                if (bins.length === 0) {
+                    console.log("⚠ No valid bins found with proper locations.");
+                    return;
+                }
+
+                // Compute optimized route
+                const optimizedRoute = computeOptimizedRoute(bins);
+
+                // Draw the route on Google Maps
+                drawRoute(optimizedRoute);
+            });
+        }
+
+        function computeOptimizedRoute(bins) {
+            console.log("🚀 Computing Optimized Route...");
+
+            let visited = new Set();
+            let route = [];
+
+            let currentBin = { id: "WorkerStart", Location: startingLocation };
+            visited.add(currentBin.id);
+            route.push(currentBin);
+
+            while (visited.size <= bins.length) {
+                let nearestBin = null;
+                let minDistance = Infinity;
+
+                for (let bin of bins) {
+                    if (!visited.has(bin.id)) {
+                        let distance = calculateDistance(currentBin.Location, bin.Location);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            nearestBin = bin;
+                        }
+                    }
+                }
+
+                if (nearestBin) {
+                    visited.add(nearestBin.id);
+                    route.push(nearestBin);
+                    currentBin = nearestBin;
+                } else {
+                    break;
+                }
+            }
+
+            console.log("✅ Optimized Route:", route.map(bin => bin.id));
+            return route;
+        }
+
+        function drawRoute(route) {
+            if (route.length < 2) {
+                console.log("⚠ Not enough locations to draw a route.");
+                return;
+            }
+
+            let waypoints = route.slice(1, -1)
+                .filter(bin => bin.Location && bin.Location.lat !== undefined && bin.Location.lng !== undefined)
+                .map(bin => ({
+                    location: new google.maps.LatLng(bin.Location.lat, bin.Location.lng),
+                    stopover: true
+                }));
+
+            let request = {
+                origin: new google.maps.LatLng(route[0].Location.lat, route[0].Location.lng),
+                destination: new google.maps.LatLng(route[route.length - 1].Location.lat, route[route.length - 1].Location.lng),
+                waypoints: waypoints,
+                optimizeWaypoints: true,
+                travelMode: google.maps.TravelMode.DRIVING
+            };
+
+            directionsService.route(request, function(result, status) {
+                if (status === google.maps.DirectionsStatus.OK) {
+                    directionsRenderer.setDirections(result);
+
+                    // Add Worker Location Marker
+                    new google.maps.Marker({
+                        position: { lat: startingLocation.lat, lng: startingLocation.lng },
+                        map: map,
+                        label: "Worker",
+                        title: "Worker Location",
+                        icon: {
+                            url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                        }
+                    });
+
+                    // Add Dustbin Markers
+                    let markerLabels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                    let index = 0;
+                    for (let bin of route.slice(1)) {
+                        if (bin.Location && bin.Location.lat !== undefined && bin.Location.lng !== undefined) {
+                            new google.maps.Marker({
+                                position: { lat: bin.Location.lat, lng: bin.Location.lng },
+                                map: map,
+                                label: `(${markerLabels[index]})(${bin.id})`,
+                                title: `Dustbin ${bin.id}`
+                            });
+                            index++;
+                        }
+                    }
+                } else {
+                    console.log("⚠ Error fetching directions:", status);
+                }
+            });
+        }
+
+        function calculateDistance(loc1, loc2) {
+            const R = 6371;
+            const dLat = (loc2.lat - loc1.lat) * (Math.PI / 180);
+            const dLon = (loc2.lng - loc1.lng) * (Math.PI / 180);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(loc1.lat * (Math.PI / 180)) *
+                Math.cos(loc2.lat * (Math.PI / 180)) *
+                Math.sin(dLon / 2) *
+                Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
